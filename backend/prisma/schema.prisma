@@ -1,0 +1,139 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+  USER
+}
+
+enum LocationCategory {
+  HOSPITAL
+  BANK
+  GOVERNMENT_OFFICE
+}
+
+enum QueueStatus {
+  WAITING
+  SERVING
+  COMPLETED
+  CANCELLED
+}
+
+enum CrowdLevel {
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+model User {
+  id           String       @id @default(uuid())
+  name         String
+  email        String       @unique
+  passwordHash String
+  role         UserRole     @default(USER)
+  createdAt    DateTime     @default(now())
+
+  // Relationships
+  queueEntries QueueEntry[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Location {
+  id          String           @id @default(uuid())
+  name        String
+  category    LocationCategory
+  address     String
+  latitude    Float
+  longitude   Float
+  openingTime String           // format "HH:MM", e.g. "08:00"
+  closingTime String           // format "HH:MM", e.g. "17:00"
+  createdAt   DateTime         @default(now())
+
+  // Relationships
+  serviceCounters ServiceCounter[]
+  queueEntries    QueueEntry[]
+  crowdReports    CrowdReport[]
+  waitPredictions WaitPrediction[]
+
+  @@index([category])
+  @@index([latitude, longitude])
+  @@map("locations")
+}
+
+model ServiceCounter {
+  id          String   @id @default(uuid())
+  locationId  String
+  counterName String
+  isActive    Boolean  @default(true)
+
+  // Relationships
+  location     Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  queueEntries QueueEntry[]
+
+  @@index([locationId])
+  @@index([locationId, isActive])
+  @@map("service_counters")
+}
+
+model QueueEntry {
+  id               String       @id @default(uuid())
+  userId           String?
+  locationId       String
+  serviceCounterId String?
+  tokenNumber      String
+  status           QueueStatus  @default(WAITING)
+  createdAt        DateTime     @default(now())
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  // Relationships
+  user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  location       Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  serviceCounter ServiceCounter? @relation(fields: [serviceCounterId], references: [id], onDelete: SetNull)
+
+  @@index([locationId, status])
+  @@index([locationId, createdAt])
+  @@index([userId])
+  @@index([tokenNumber])
+  @@map("queue_entries")
+}
+
+model CrowdReport {
+  id          String     @id @default(uuid())
+  locationId  String
+  crowdLevel  CrowdLevel
+  peopleCount Int
+  reportedAt  DateTime   @default(now())
+  verified    Boolean    @default(false)
+
+  // Relationships
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, reportedAt])
+  @@map("crowd_reports")
+}
+
+model WaitPrediction {
+  id               String   @id @default(uuid())
+  locationId       String
+  predictedMinutes Float
+  confidenceLevel  Float    // e.g. 0.92 for 92%
+  createdAt        DateTime @default(now())
+
+  // Relationships
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, createdAt])
+  @@map("wait_predictions")
+}
